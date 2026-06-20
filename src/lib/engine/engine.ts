@@ -83,4 +83,9 @@ export class GameEngine {
   isSolved(): boolean {
     return this.closestGap() >= this.threshold;
   }
+
+  /** Number of intermediate words placed (excludes the two targets). */
+  wordCount(): number {
+    return this.nodes.size - 2;
+  }
 }

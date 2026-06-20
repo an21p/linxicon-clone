@@ -64,3 +64,16 @@ describe('GameEngine connectivity', () => {
     expect(e.isSolved()).toBe(false);
   });
 });
+
+describe('GameEngine scoring', () => {
+  const A = { word: 'a', vector: [1, 0] };
+  const B = { word: 'b', vector: [0, 1] };
+
+  it('counts only intermediate words, not the two targets', () => {
+    const e = new GameEngine(A, B);
+    expect(e.wordCount()).toBe(0);
+    e.addWord('one', [1, 1]);
+    e.addWord('two', [1, 2]);
+    expect(e.wordCount()).toBe(2);
+  });
+});

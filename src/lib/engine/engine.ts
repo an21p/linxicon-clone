@@ -48,4 +48,39 @@ export class GameEngine {
   has(word: string): boolean {
     return this.nodes.has(word);
   }
+
+  /** Maximum-bottleneck similarity along the best path between the two targets. */
+  closestGap(): number {
+    const ids = [...this.nodes.keys()];
+    const best = new Map<string, number>();
+    for (const id of ids) best.set(id, -Infinity);
+    best.set(this.targetA, Infinity);
+    const visited = new Set<string>();
+
+    while (visited.size < ids.length) {
+      let u: string | null = null;
+      let bu = -Infinity;
+      for (const id of ids) {
+        const v = best.get(id)!;
+        if (!visited.has(id) && v > bu) { bu = v; u = id; }
+      }
+      if (u === null) break;
+      visited.add(u);
+      if (u === this.targetB) break;
+
+      const uVec = this.nodes.get(u)!.vector;
+      for (const v of ids) {
+        if (visited.has(v)) continue;
+        const w = cosineSimilarity(uVec, this.nodes.get(v)!.vector);
+        const cand = Math.min(best.get(u)!, w);
+        if (cand > best.get(v)!) best.set(v, cand);
+      }
+    }
+    const gap = best.get(this.targetB)!;
+    return gap === Infinity ? 1 : gap;
+  }
+
+  isSolved(): boolean {
+    return this.closestGap() >= this.threshold;
+  }
 }

@@ -39,3 +39,28 @@ describe('GameEngine edges', () => {
     expect(() => e.addWord('a', [1, 0])).toThrow(/already/i);
   });
 });
+
+describe('GameEngine connectivity', () => {
+  const A = { word: 'a', vector: [1, 0] };
+  const B = { word: 'b', vector: [0, 1] };
+  const mid = [1, 1]; // sim with A and with B both = 0.7071...
+
+  it('closestGap equals direct similarity with only targets present', () => {
+    const e = new GameEngine(A, B);
+    expect(e.closestGap()).toBeCloseTo(0, 6); // sim(A,B) = 0
+    expect(e.isSolved()).toBe(false);
+  });
+
+  it('bridges the targets through a middle word', () => {
+    const e = new GameEngine(A, B);
+    e.addWord('mid', mid);
+    expect(e.closestGap()).toBeCloseTo(Math.SQRT1_2, 6); // min(0.707, 0.707)
+    expect(e.isSolved()).toBe(true);
+  });
+
+  it('is not solved when the bridge link is below threshold', () => {
+    const e = new GameEngine(A, B);
+    e.addWord('weak', [0.39, Math.sqrt(1 - 0.39 ** 2)]); // sim(A,weak)=0.39, sim(B,weak)<threshold
+    expect(e.isSolved()).toBe(false);
+  });
+});

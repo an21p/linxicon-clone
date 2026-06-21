@@ -25,7 +25,7 @@ export interface SubmitResult {
 export interface GameDeps {
   embedder: Embedder;
   validateWord: (raw: string) => ValidationResult;
-  generatePuzzle: () => Promise<Puzzle>;
+  generatePuzzle: (embedder: Embedder) => Promise<Puzzle>;
 }
 
 const EMPTY: GameState = {
@@ -38,6 +38,7 @@ export function createGame(deps: GameDeps) {
   const stats = writable<Stats>(loadStats());
   let engine: GameEngine | null = null;
   let wonThisGame = false;
+  let embedder = deps.embedder;
 
   function snapshot(lastWord: string | null): GameState {
     const e = engine!;
@@ -54,8 +55,8 @@ export function createGame(deps: GameDeps) {
   }
 
   async function newGame(): Promise<void> {
-    const p = await deps.generatePuzzle();
-    const [va, vb] = await Promise.all([deps.embedder.embed(p.a), deps.embedder.embed(p.b)]);
+    const p = await deps.generatePuzzle(embedder);
+    const [va, vb] = await Promise.all([embedder.embed(p.a), embedder.embed(p.b)]);
     engine = new GameEngine({ word: p.a, vector: va }, { word: p.b, vector: vb });
     wonThisGame = false;
     state.set(snapshot(null));
@@ -67,7 +68,7 @@ export function createGame(deps: GameDeps) {
     if (!v.ok) return { ok: false, reason: v.reason };
     if (engine.has(v.word)) return { ok: false, reason: 'duplicate' };
 
-    const vec = await deps.embedder.embed(v.word);
+    const vec = await embedder.embed(v.word);
     engine.addWord(v.word, vec);
     state.set(snapshot(v.word));
 
@@ -88,11 +89,31 @@ export function createGame(deps: GameDeps) {
     }
   }
 
+  function setEmbedder(e: Embedder): void {
+    embedder = e;
+  }
+
+  /** Re-embed the current puzzle (same words) with the active embedder and rebuild edges/gap. */
+  async function reEmbedCurrent(): Promise<void> {
+    if (!engine) return;
+    const a = engine.targetA;
+    const b = engine.targetB;
+    const inter = engine.getNodes().filter((n) => !n.isTarget).map((n) => n.id);
+    const [va, vb] = await Promise.all([embedder.embed(a), embedder.embed(b)]);
+    const next = new GameEngine({ word: a, vector: va }, { word: b, vector: vb });
+    const vecs = await Promise.all(inter.map((w) => embedder.embed(w)));
+    inter.forEach((w, i) => next.addWord(w, vecs[i]));
+    engine = next;
+    state.set(snapshot(null));
+  }
+
   return {
     state: state as Readable<GameState>,
     stats: stats as Readable<Stats>,
     newGame,
     submitWord,
     skip,
+    setEmbedder,
+    reEmbedCurrent,
   };
 }

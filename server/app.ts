@@ -12,8 +12,13 @@ interface EmbedBody {
   words?: unknown;
 }
 
+// Bounds keep the public (tunnel-exposed) API cheap to serve: a long word would
+// otherwise stall the single-threaded MiniLM live-inference fallback.
+const MAX_WORDS = 256;
+const MAX_WORD_LEN = 200;
+
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, handlerTimeout: 30_000, bodyLimit: 256 * 1024 });
 
   app.get('/api/health', async () => ({ ok: true, models: Object.keys(MODELS) }));
 
@@ -21,10 +26,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const { model, words } = (req.body ?? {}) as EmbedBody;
     if (!isModelId(model)) return reply.code(400).send({ error: 'unknown model' });
     if (
-      !Array.isArray(words) || words.length === 0 || words.length > 256 ||
-      !words.every((w) => typeof w === 'string')
+      !Array.isArray(words) || words.length === 0 || words.length > MAX_WORDS ||
+      !words.every((w) => typeof w === 'string' && w.length <= MAX_WORD_LEN)
     ) {
-      return reply.code(400).send({ error: 'words must be a non-empty string[] (max 256)' });
+      return reply
+        .code(400)
+        .send({ error: `words must be a non-empty string[] (max ${MAX_WORDS}, each ≤ ${MAX_WORD_LEN} chars)` });
     }
     const vectors = await deps.service.embed(model, words as string[]);
     return { model, dim: deps.service.dim(model), vectors };

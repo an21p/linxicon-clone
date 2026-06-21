@@ -23,6 +23,10 @@ export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHa
   let progressCb: ((p: number) => void) | null = null;
   let readyCb: (() => void) | null = null;
   let errorCb: ((message: string) => void) | null = null;
+  // Latch terminal state so a callback registered after the health check resolves
+  // still fires (avoids a race if the caller awaits before registering).
+  let readyFired = false;
+  let errorMessage: string | null = null;
 
   const embedFn = async (word: string): Promise<Float32Array> => {
     const res = await fetch(`${API_BASE}/embed`, {
@@ -46,11 +50,13 @@ export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHa
   // Health check flips "ready" near-instantly — no model/matrix download in the browser.
   void fetch(`${API_BASE}/health`, { signal: ctrl.signal }).then(res => {
     if (!res.ok) throw new Error(`health ${res.status}`);
+    readyFired = true;
     progressCb?.(100);
     readyCb?.();
   }).catch((err: unknown) => {
     if ((err as Error).name !== 'AbortError') {
-      errorCb?.('Could not reach the word service.');
+      errorMessage = 'Could not reach the word service.';
+      errorCb?.(errorMessage);
     }
   });
 
@@ -58,8 +64,8 @@ export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHa
     modelId,
     embedder: withCache(embedFn, store),
     onProgress(cb) { progressCb = cb; },
-    onReady(cb) { readyCb = cb; },
-    onError(cb) { errorCb = cb; },
+    onReady(cb) { readyCb = cb; if (readyFired) cb(); },
+    onError(cb) { errorCb = cb; if (errorMessage) cb(errorMessage); },
     destroy() { ctrl.abort(); },
   };
 }

@@ -42,4 +42,11 @@ describe('http embedder', () => {
     const ready = await new Promise<boolean>((resolve) => h.onReady(() => resolve(true)));
     expect(ready).toBe(true);
   });
+
+  it('onReady still fires when registered after the health check resolves (latched)', async () => {
+    const h = createEmbeddings('minilm');
+    await new Promise((r) => setTimeout(r, 0)); // let the health fetch resolve first
+    const ready = await new Promise<boolean>((resolve) => h.onReady(() => resolve(true)));
+    expect(ready).toBe(true);
+  });
 });

@@ -40,4 +40,14 @@ describe('api', () => {
     expect((await app.inject({ method: 'POST', url: '/api/embed', payload: { model: 'minilm', words: [] } })).statusCode).toBe(400);
     await app.close();
   });
+
+  it('POST /api/embed rejects an over-long word with 400 (DoS guard)', async () => {
+    const app = await buildApp({ service: svc() });
+    const res = await app.inject({
+      method: 'POST', url: '/api/embed',
+      payload: { model: 'minilm', words: ['a'.repeat(201)] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
 });

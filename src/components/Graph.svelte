@@ -13,7 +13,7 @@
   export let lastWord: string | null = null;
 
   type SimNode = { id: string; isTarget: boolean; x?: number; y?: number; fx?: number; fy?: number };
-  type SimLink = { source: string; target: string; sim: number };
+  type SimLink = { source: string; target: string; sim: number; key: string };
 
   let width = 800, height = 600;
   let simNodes: SimNode[] = [];
@@ -24,7 +24,9 @@
   function rebuild() {
     const existing = new Map(simNodes.map((n) => [n.id, n]));
     simNodes = nodes.map((n) => existing.get(n.id) ?? { id: n.id, isTarget: n.isTarget, x: width / 2 + (Math.random() - 0.5) * 40, y: height / 2 + (Math.random() - 0.5) * 40 });
-    simLinks = edges.map((e) => ({ source: e.a, target: e.b, sim: e.sim }));
+    // `key` is captured here before d3's forceLink mutates source/target into
+    // node objects in place (which would otherwise collapse the #each keys).
+    simLinks = edges.map((e) => ({ source: e.a, target: e.b, sim: e.sim, key: `${e.a}-${e.b}` }));
 
     if (!sim) {
       sim = forceSimulation<SimNode>(simNodes)
@@ -47,7 +49,7 @@
 </script>
 
 <svg viewBox={`0 0 ${width} ${height}`} class="graph">
-  {#each simLinks as l (l.source + '-' + l.target)}
+  {#each simLinks as l (l.key)}
     {#if positions[typeof l.source === 'string' ? l.source : (l.source as any).id] && positions[typeof l.target === 'string' ? l.target : (l.target as any).id]}
       {@const s = positions[typeof l.source === 'string' ? l.source : (l.source as any).id]}
       {@const t = positions[typeof l.target === 'string' ? l.target : (l.target as any).id]}

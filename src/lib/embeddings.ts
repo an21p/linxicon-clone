@@ -5,6 +5,7 @@ export interface EmbeddingsHandle {
   embedder: Embedder;
   onProgress(cb: (progress: number) => void): void;
   onReady(cb: () => void): void;
+  onError(cb: (message: string) => void): void;
 }
 
 export function createEmbeddings(): EmbeddingsHandle {
@@ -14,6 +15,7 @@ export function createEmbeddings(): EmbeddingsHandle {
   const pending = new Map<number, { resolve: (v: Float32Array) => void; reject: (e: Error) => void }>();
   let progressCb: ((p: number) => void) | null = null;
   let readyCb: (() => void) | null = null;
+  let errorCb: ((message: string) => void) | null = null;
 
   worker.onmessage = (ev: MessageEvent) => {
     const msg = ev.data;
@@ -28,6 +30,12 @@ export function createEmbeddings(): EmbeddingsHandle {
     } else if (msg.type === 'ready') {
       readyCb?.();
     }
+  };
+
+  // Fired when the worker itself fails to load (e.g. blocked WASM/CORS) — without
+  // this the app would hang on "Loading…" with no feedback.
+  worker.onerror = (ev: ErrorEvent) => {
+    errorCb?.(ev.message || 'Failed to load the word model.');
   };
 
   const embedFn = (word: string) =>
@@ -46,5 +54,6 @@ export function createEmbeddings(): EmbeddingsHandle {
     embedder: withCache(embedFn, store),
     onProgress(cb) { progressCb = cb; },
     onReady(cb) { readyCb = cb; },
+    onError(cb) { errorCb = cb; },
   };
 }

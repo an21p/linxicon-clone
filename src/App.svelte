@@ -18,34 +18,58 @@
   let progress = 0;
   let ready = false;
   let error: string | null = null;
+  let fatalError: string | null = null;
+  let busy = false;
 
   emb.onProgress((p) => (progress = p));
-  emb.onReady(async () => { ready = true; await game.newGame(); });
+  emb.onReady(async () => {
+    try { await game.newGame(); ready = true; }
+    catch { fatalError = 'Could not start a game. Please reload.'; }
+  });
+  emb.onError((m) => (fatalError = m));
 
   async function onSubmit(e: CustomEvent<string>) {
+    if (busy) return; // ignore re-submits while a word is being embedded
     error = null;
-    const res = await game.submitWord(e.detail);
-    if (!res.ok) {
-      error = res.reason === 'duplicate' ? 'already on the board'
-        : res.reason === 'unknown' ? 'not a recognized word'
-        : 'enter a single word';
+    busy = true;
+    try {
+      const res = await game.submitWord(e.detail);
+      if (!res.ok) {
+        error = res.reason === 'duplicate' ? 'already on the board'
+          : res.reason === 'unknown' ? 'not a recognized word'
+          : 'enter a single word';
+      }
+    } catch {
+      error = 'something went wrong adding that word';
+    } finally {
+      busy = false;
     }
   }
 
-  function onNewGame() { game.skip(); error = null; game.newGame(); }
+  async function onNewGame() {
+    error = null;
+    busy = true;
+    try { game.skip(); await game.newGame(); }
+    catch { error = 'could not start a new game'; }
+    finally { busy = false; }
+  }
 </script>
 
 <main>
   {#if !ready}
     <div class="loading">
       <h1>Linxicon</h1>
-      <p>Loading word model… {Math.round(progress)}%</p>
+      {#if fatalError}
+        <p class="fatal">{fatalError}</p>
+      {:else}
+        <p>Loading word model… {Math.round(progress)}%</p>
+      {/if}
     </div>
   {:else}
     <Hud
       targetA={$state.targetA} targetB={$state.targetB}
       wordCount={$state.wordCount} gap={$state.gap}
-      best={$stats.best} {error}
+      best={$stats.best} {error} disabled={busy}
       on:submit={onSubmit} on:newgame={onNewGame} />
     <div class="canvas">
       <Graph
@@ -65,4 +89,5 @@
   .canvas { flex: 1; padding: 12px; }
   .loading { display: grid; place-items: center; height: 100vh; color: #eaeefb; font-family: system-ui, sans-serif; text-align: center; }
   h1 { color: #e8c547; }
+  .fatal { color: #ff8a8a; max-width: 28rem; }
 </style>

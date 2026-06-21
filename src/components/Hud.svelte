@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { MODEL_LIST, type ModelId } from '../lib/models';
   export let targetA = '';
   export let targetB = '';
   export let wordCount = 0;
@@ -7,9 +8,14 @@
   export let best: number | null = null;
   export let error: string | null = null;
   export let disabled = false;
+  export let model: ModelId;
 
   let value = '';
-  const dispatch = createEventDispatcher<{ submit: string; newgame: void }>();
+  const dispatch = createEventDispatcher<{ submit: string; newgame: void; model: ModelId }>();
+
+  function onModelChange(e: Event) {
+    dispatch('model', (e.currentTarget as HTMLSelectElement).value as ModelId);
+  }
 
   // gap is the widest path's similarity; the puzzle is solved at >= 0.41.
   // surface it as "proximity" so the bar fills toward the join.
@@ -73,6 +79,14 @@
       <button type="submit" class="add" {disabled} aria-label="place word">place</button>
     </div>
     <button type="button" class="ghost" on:click={() => dispatch('newgame')}>new chart</button>
+    <label class="lens">
+      <span class="lens-label">lens</span>
+      <select value={model} on:change={onModelChange} {disabled} aria-label="similarity model">
+        {#each MODEL_LIST as m}
+          <option value={m.id}>{m.label}</option>
+        {/each}
+      </select>
+    </label>
   </form>
 
   <p class="status" aria-live="polite">
@@ -246,6 +260,38 @@
     backdrop-filter: blur(8px);
   }
   .ghost:hover { color: var(--star); border-color: rgba(150, 168, 224, 0.4); }
+
+  .lens {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid var(--panel-line);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    transition: border-color 0.2s ease;
+  }
+  .lens:focus-within { border-color: rgba(240, 198, 116, 0.45); }
+  .lens-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .lens select {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--gold-bright);
+    background: transparent;
+    border: none;
+    padding: 11px 0;
+    cursor: pointer;
+  }
+  .lens select:focus { outline: none; }
+  .lens select:disabled { opacity: 0.4; cursor: progress; }
+  .lens select option { background: var(--panel); color: var(--star); }
 
   .status { min-height: 18px; text-align: center; margin: 0; }
   .error {

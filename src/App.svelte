@@ -3,15 +3,25 @@
   import Hud from './components/Hud.svelte';
   import WinModal from './components/WinModal.svelte';
   import { createGame } from './lib/game';
-  import { createEmbeddings } from './lib/embeddings';
+  import { createEmbeddings, type EmbeddingsHandle } from './lib/embeddings';
   import { validateWord } from './lib/dictionary';
   import { generatePuzzle } from './lib/puzzles';
+  import { DEFAULT_MODEL, isModelId, type ModelId } from './lib/models';
 
-  const emb = createEmbeddings();
+  const STORAGE_KEY = 'linxicon.model';
+
+  function loadModel(): ModelId {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return isModelId(saved) ? saved : DEFAULT_MODEL;
+  }
+
+  let model: ModelId = loadModel();
+  let emb: EmbeddingsHandle = createEmbeddings(model);
+
   const game = createGame({
     embedder: emb.embedder,
     validateWord,
-    generatePuzzle: () => generatePuzzle(emb.embedder),
+    generatePuzzle: (embedder) => generatePuzzle(embedder),
   });
   const { state, stats } = game;
 
@@ -21,12 +31,41 @@
   let fatalError: string | null = null;
   let busy = false;
 
-  emb.onProgress((p) => (progress = p));
-  emb.onReady(async () => {
+  function bindEmbeddings(handle: EmbeddingsHandle, onReady: () => void | Promise<void>) {
+    progress = 0;
+    handle.onProgress((p) => (progress = p));
+    handle.onReady(() => { void onReady(); });
+    handle.onError((m) => (fatalError = m));
+  }
+
+  bindEmbeddings(emb, async () => {
     try { await game.newGame(); ready = true; }
     catch { fatalError = 'Could not start a game. Please reload.'; }
   });
-  emb.onError((m) => (fatalError = m));
+
+  async function onModelChange(e: CustomEvent<ModelId>) {
+    const next = e.detail;
+    if (next === model || busy) return;
+    model = next;
+    localStorage.setItem(STORAGE_KEY, next);
+    error = null;
+    fatalError = null;
+    busy = true;
+    ready = false;            // show the orrery/progress while the new model inits
+    emb.destroy();
+    emb = createEmbeddings(next);
+    game.setEmbedder(emb.embedder);
+    bindEmbeddings(emb, async () => {
+      try {
+        await game.reEmbedCurrent();   // same puzzle, re-scored under the new backend
+        ready = true;
+      } catch {
+        fatalError = 'Could not switch model. Please reload.';
+      } finally {
+        busy = false;
+      }
+    });
+  }
 
   async function onSubmit(e: CustomEvent<string>) {
     if (busy) return; // ignore re-submits while a word is being embedded
@@ -79,8 +118,8 @@
     <Hud
       targetA={$state.targetA} targetB={$state.targetB}
       wordCount={$state.wordCount} gap={$state.gap}
-      best={$stats.best} {error} disabled={busy}
-      on:submit={onSubmit} on:newgame={onNewGame} />
+      best={$stats.best} {error} disabled={busy} {model}
+      on:submit={onSubmit} on:newgame={onNewGame} on:model={onModelChange} />
     <div class="canvas">
       <Graph
         nodes={$state.nodes} edges={$state.edges}

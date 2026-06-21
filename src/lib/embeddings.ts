@@ -2,6 +2,8 @@ import { get as idbGet, set as idbSet } from 'idb-keyval';
 import { withCache, type Embedder, type PersistentStore } from './embedder';
 import { DEFAULT_MODEL, type ModelId } from './models';
 
+const API_BASE = '/api';
+
 export interface EmbeddingsHandle {
   modelId: ModelId;
   embedder: Embedder;
@@ -16,51 +18,41 @@ export function cacheKey(modelId: ModelId, word: string): string {
   return `vec:${modelId}:${word}`;
 }
 
-function makeWorker(modelId: ModelId): Worker {
-  return modelId === 'numberbatch'
-    ? new Worker(new URL('./numberbatch.worker.ts', import.meta.url), { type: 'module' })
-    : new Worker(new URL('./embeddings.worker.ts', import.meta.url), { type: 'module' });
-}
-
 export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHandle {
-  const worker = makeWorker(modelId);
-
-  let nextId = 1;
-  const pending = new Map<number, { resolve: (v: Float32Array) => void; reject: (e: Error) => void }>();
+  const ctrl = new AbortController();
   let progressCb: ((p: number) => void) | null = null;
   let readyCb: (() => void) | null = null;
   let errorCb: ((message: string) => void) | null = null;
 
-  worker.onmessage = (ev: MessageEvent) => {
-    const msg = ev.data;
-    if (msg.type === 'result') {
-      pending.get(msg.id)?.resolve(msg.vector);
-      pending.delete(msg.id);
-    } else if (msg.type === 'error') {
-      pending.get(msg.id)?.reject(new Error(msg.message));
-      pending.delete(msg.id);
-    } else if (msg.type === 'progress') {
-      progressCb?.(msg.progress);
-    } else if (msg.type === 'ready') {
-      readyCb?.();
-    }
-  };
-
-  worker.onerror = (ev: ErrorEvent) => {
-    errorCb?.(ev.message || 'Failed to load the word model.');
-  };
-
-  const embedFn = (word: string) =>
-    new Promise<Float32Array>((resolve, reject) => {
-      const id = nextId++;
-      pending.set(id, { resolve, reject });
-      worker.postMessage({ id, word });
+  const embedFn = async (word: string): Promise<Float32Array> => {
+    const res = await fetch(`${API_BASE}/embed`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: modelId, words: [word] }),
+      signal: ctrl.signal,
     });
+    if (!res.ok) throw new Error(`embed ${modelId} -> ${res.status}`);
+    const data = (await res.json()) as { vectors: (number[] | null)[] };
+    const vec = data.vectors[0];
+    if (!vec) throw new Error(`no ${modelId} vector for "${word}"`);
+    return Float32Array.from(vec);
+  };
 
   const store: PersistentStore = {
     async get(key) { return (await idbGet(cacheKey(modelId, key))) as Float32Array | undefined; },
     async set(key, value) { await idbSet(cacheKey(modelId, key), value); },
   };
+
+  // Health check flips "ready" near-instantly — no model/matrix download in the browser.
+  void fetch(`${API_BASE}/health`, { signal: ctrl.signal }).then(res => {
+    if (!res.ok) throw new Error(`health ${res.status}`);
+    progressCb?.(100);
+    readyCb?.();
+  }).catch((err: unknown) => {
+    if ((err as Error).name !== 'AbortError') {
+      errorCb?.('Could not reach the word service.');
+    }
+  });
 
   return {
     modelId,
@@ -68,11 +60,6 @@ export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHa
     onProgress(cb) { progressCb = cb; },
     onReady(cb) { readyCb = cb; },
     onError(cb) { errorCb = cb; },
-    destroy() {
-      worker.onmessage = null;
-      worker.onerror = null;
-      pending.clear();
-      worker.terminate();
-    },
+    destroy() { ctrl.abort(); },
   };
 }

@@ -1,42 +1,26 @@
-import type { Embedder } from './embedder';
-import { cosineSimilarity } from './math';
 import { NOUNS } from './words/nouns';
 
 export interface Puzzle {
   a: string;
   b: string;
-  simAB: number;
 }
 
 export interface PuzzleOptions {
   nouns?: string[];
-  ceiling?: number;       // max allowed sim between the two targets
-  rng?: () => number;     // injectable for tests
-  maxTries?: number;
+  rng?: () => number; // injectable; seed it for a deterministic daily puzzle
 }
 
-export async function generatePuzzle(
-  embedder: Embedder,
-  opts: PuzzleOptions = {},
-): Promise<Puzzle> {
+/**
+ * Pick two distinct target nouns from `rng` alone — independent of any embedding
+ * model, so the same seed yields the same puzzle under every model and across reloads.
+ */
+export function generatePuzzle(opts: PuzzleOptions = {}): Puzzle {
   const nouns = opts.nouns ?? NOUNS;
-  const ceiling = opts.ceiling ?? 0.25;
   const rng = opts.rng ?? Math.random;
-  const maxTries = opts.maxTries ?? 50;
+  if (nouns.length < 2) throw new Error('need at least two nouns to make a puzzle');
 
-  const pick = () => nouns[Math.floor(rng() * nouns.length)];
-
-  let fallback: Puzzle | null = null;
-  for (let t = 0; t < maxTries; t++) {
-    const a = pick();
-    let b = pick();
-    if (a === b) continue;
-    const [va, vb] = await Promise.all([embedder.embed(a), embedder.embed(b)]);
-    const simAB = cosineSimilarity(va, vb);
-    const candidate: Puzzle = { a, b, simAB };
-    if (simAB < ceiling) return candidate;
-    if (!fallback || simAB < fallback.simAB) fallback = candidate;
-  }
-  if (!fallback) throw new Error('could not generate a puzzle');
-  return fallback; // best (lowest-sim) pair we found
+  const i = Math.floor(rng() * nouns.length);
+  let j = Math.floor(rng() * nouns.length);
+  if (j === i) j = (i + 1) % nouns.length; // guarantee distinct targets
+  return { a: nouns[i], b: nouns[j] };
 }

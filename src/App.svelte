@@ -6,6 +6,7 @@
   import { createEmbeddings, type EmbeddingsHandle } from './lib/embeddings';
   import { validateWord } from './lib/dictionary';
   import { generatePuzzle } from './lib/puzzles';
+  import { loadSeed, advanceSeed, seededRng, type Seed } from './lib/seed';
   import { DEFAULT_MODEL, isModelId, type ModelId } from './lib/models';
 
   const STORAGE_KEY = 'linxicon.model';
@@ -18,10 +19,13 @@
   let model: ModelId = loadModel();
   let emb: EmbeddingsHandle = createEmbeddings(model);
 
+  // Deterministic daily puzzle: reload keeps the same words; "new chart" advances the count.
+  let seed: Seed = loadSeed();
+
   const game = createGame({
     embedder: emb.embedder,
     validateWord,
-    generatePuzzle: (embedder) => generatePuzzle(embedder),
+    generatePuzzle: () => generatePuzzle({ rng: seededRng(seed.day, seed.count) }),
   });
   const { state, stats } = game;
 
@@ -88,7 +92,7 @@
   async function onNewGame() {
     error = null;
     busy = true;
-    try { game.skip(); await game.newGame(); }
+    try { game.skip(); seed = advanceSeed(); await game.newGame(); }
     catch { error = 'could not start a new game'; }
     finally { busy = false; }
   }

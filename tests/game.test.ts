@@ -15,7 +15,7 @@ const validateWord = (w: string) =>
   VEC[w.toLowerCase()]
     ? ({ ok: true, word: w.toLowerCase() } as const)
     : ({ ok: false, reason: 'unknown' } as const);
-const generatePuzzle = async (_e: typeof embedder) => ({ a: 'alpha', b: 'omega', simAB: 0 });
+const generatePuzzle = () => ({ a: 'alpha', b: 'omega' });
 
 beforeEach(() => localStorage.clear());
 

@@ -1,22 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { generatePuzzle } from '../src/lib/puzzles';
-import { withCache } from '../src/lib/embedder';
+import { seededRng } from '../src/lib/seed';
 
-// Deterministic fake: each word maps to a fixed 2D vector by first letter code.
-const fakeEmbedder = withCache(async (w: string) => {
-  const angle = (w.charCodeAt(0) % 16) * (Math.PI / 16);
-  return new Float32Array([Math.cos(angle), Math.sin(angle)]);
-});
+const nouns = ['apple', 'banana', 'rocket', 'zebra', 'mountain', 'piano'];
 
 describe('generatePuzzle', () => {
-  it('returns two distinct words below the similarity ceiling', async () => {
-    const nouns = ['apple', 'banana', 'rocket', 'zebra', 'mountain', 'piano'];
-    let i = 0;
-    const rng = () => [0.05, 0.5, 0.95, 0.2, 0.8, 0.35][i++ % 6]; // deterministic
-    const p = await generatePuzzle(fakeEmbedder, { nouns, ceiling: 0.25, rng });
+  it('returns two distinct words from the noun list', () => {
+    const p = generatePuzzle({ nouns, rng: seededRng(20000, 0) });
     expect(p.a).not.toBe(p.b);
-    expect(p.simAB).toBeLessThan(0.25);
     expect(nouns).toContain(p.a);
     expect(nouns).toContain(p.b);
+  });
+
+  it('is deterministic for the same seed and varies by count', () => {
+    const same1 = generatePuzzle({ nouns, rng: seededRng(20000, 0) });
+    const same2 = generatePuzzle({ nouns, rng: seededRng(20000, 0) });
+    expect(same1).toEqual(same2); // reload -> identical puzzle
+
+    // advancing the count generally yields a different pair somewhere in the day
+    const seeds = [0, 1, 2, 3, 4].map((c) => generatePuzzle({ nouns, rng: seededRng(20000, c) }));
+    const unique = new Set(seeds.map((p) => `${p.a}|${p.b}`));
+    expect(unique.size).toBeGreaterThan(1);
+  });
+
+  it('still produces distinct targets when both picks collide', () => {
+    const p = generatePuzzle({ nouns, rng: () => 0 }); // always picks index 0
+    expect(p.a).toBe('apple');
+    expect(p.b).toBe('banana'); // (0 + 1) % len
   });
 });

@@ -25,7 +25,7 @@ export interface SubmitResult {
 export interface GameDeps {
   embedder: Embedder;
   validateWord: (raw: string) => ValidationResult;
-  generatePuzzle: (embedder: Embedder) => Promise<Puzzle>;
+  generatePuzzle: () => Puzzle;
 }
 
 const EMPTY: GameState = {
@@ -55,7 +55,7 @@ export function createGame(deps: GameDeps) {
   }
 
   async function newGame(): Promise<void> {
-    const p = await deps.generatePuzzle(embedder);
+    const p = deps.generatePuzzle();
     const [va, vb] = await Promise.all([embedder.embed(p.a), embedder.embed(p.b)]);
     engine = new GameEngine({ word: p.a, vector: va }, { word: p.b, vector: vb });
     wonThisGame = false;

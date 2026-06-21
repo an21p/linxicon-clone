@@ -12,7 +12,7 @@
   export let targetB = '';
   export let lastWord: string | null = null;
 
-  type SimNode = { id: string; isTarget: boolean; x?: number; y?: number; fx?: number; fy?: number };
+  type SimNode = { id: string; isTarget: boolean; x?: number; y?: number; fx?: number | null; fy?: number | null };
   type SimLink = { source: string; target: string; sim: number; key: string };
 
   // `width`/`height` track the SVG's real rendered size (bound below), so the
@@ -24,14 +24,27 @@
   let sim: Simulation<SimNode, undefined> | null = null;
   let center = forceCenter(width / 2, height / 2);
 
+  // drag state
+  let svgEl: SVGSVGElement;
+  let dragNode: SimNode | null = null;
+  let dragId: number | null = null;
+
+  const IDLE_ALPHA = 0.015; // never fully freeze — a gentle perpetual drift
+  const DRAG_ALPHA = 0.3;   // heat the sim while a star is held
+
   // keep every star fully inside the frame: clear its glow radius on each side,
-  // plus extra room beneath targets for their label.
+  // plus extra room beneath targets for their label. Applies to a pinned (fx/fy)
+  // position too, so a dragged star can't be pulled outside the frame.
   function clampNode(n: SimNode) {
     const w = Math.max(1, width), h = Math.max(1, height);
     const m = n.isTarget ? 36 : 22;
     const bottom = n.isTarget ? 56 : 22;
-    n.x = Math.max(m, Math.min(w - m, n.x ?? w / 2));
-    n.y = Math.max(m, Math.min(h - bottom, n.y ?? h / 2));
+    const cx = (v: number) => Math.max(m, Math.min(w - m, v));
+    const cy = (v: number) => Math.max(m, Math.min(h - bottom, v));
+    n.x = cx(n.x ?? w / 2);
+    n.y = cy(n.y ?? h / 2);
+    if (n.fx != null) n.fx = cx(n.fx);
+    if (n.fy != null) n.fy = cy(n.fy);
   }
 
   function rebuild() {
@@ -43,10 +56,12 @@
 
     if (!sim) {
       sim = forceSimulation<SimNode>(simNodes)
+        .velocityDecay(0.28)   // carry momentum — springier, bouncier settling
+        .alphaTarget(IDLE_ALPHA)
         .force('charge', forceManyBody().strength(-400))
         .force('center', center)
         .force('collide', forceCollide(42))
-        .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120).strength(0.6))
+        .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120).strength(0.7))
         .on('tick', () => {
           for (const n of simNodes) clampNode(n); // keep nodes inside the frame
           positions = Object.fromEntries(simNodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
@@ -77,6 +92,34 @@
     return `M${s.x},${s.y} Q${mx - dy * off},${my + dx * off} ${t.x},${t.y}`;
   }
 
+  // --- drag: grab a star, the constellation reacts live, fling it back on release ---
+  function dragStart(e: PointerEvent, n: SimNode) {
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    dragNode = n;
+    dragId = e.pointerId;
+    n.fx = n.x ?? 0;
+    n.fy = n.y ?? 0;
+    sim?.alphaTarget(DRAG_ALPHA).restart();
+  }
+  function dragMove(e: PointerEvent, n: SimNode) {
+    if (dragNode !== n || e.pointerId !== dragId) return;
+    const r = svgEl.getBoundingClientRect();
+    // viewBox maps 1:1 to pixels; the tick clamps fx/fy back inside the frame.
+    n.fx = e.clientX - r.left;
+    n.fy = e.clientY - r.top;
+    sim?.alpha(Math.max(sim.alpha(), DRAG_ALPHA)).restart();
+  }
+  function dragEnd(e: PointerEvent, n: SimNode) {
+    if (dragNode !== n) return;
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    n.fx = null; // release into the physics and let it re-settle
+    n.fy = null;
+    dragNode = null;
+    dragId = null;
+    sim?.alphaTarget(IDLE_ALPHA);
+  }
+
   // Re-settle whenever the node set or any edge similarity changes — i.e. a word
   // was added, or the graph was re-scored under a different model. Deriving string
   // keys guarantees the reactive fires on real content changes, not just identity.
@@ -88,6 +131,7 @@
 
 <svg viewBox={`0 0 ${Math.max(1, width)} ${Math.max(1, height)}`} class="graph"
   preserveAspectRatio="xMidYMid meet"
+  bind:this={svgEl}
   bind:clientWidth={width} bind:clientHeight={height}>
   <defs>
     <radialGradient id="vignette" cx="50%" cy="42%" r="75%">
@@ -143,7 +187,13 @@
     {#if positions[n.id]}
       {@const p = positions[n.id]}
       {@const isTarget = n.id === targetA || n.id === targetB}
-      <g transform={`translate(${p.x}, ${p.y})`} class:pop={n.id === lastWord} class:target={isTarget}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <g class="star" transform={`translate(${p.x}, ${p.y})`}
+        class:pop={n.id === lastWord} class:target={isTarget} class:grabbing={dragNode === n}
+        on:pointerdown={(e) => dragStart(e, n)}
+        on:pointermove={(e) => dragMove(e, n)}
+        on:pointerup={(e) => dragEnd(e, n)}
+        on:pointercancel={(e) => dragEnd(e, n)}>
         <circle r={isTarget ? 30 : 19} class="halo"
           fill={isTarget ? 'url(#targetGlow)' : 'url(#starGlow)'} filter="url(#bloomSoft)" />
         <circle r={isTarget ? 21 : 15} class="disc"
@@ -186,6 +236,9 @@
 
   .link-glow { fill: none; stroke: #74e3da; }
   .link { fill: none; stroke: #9fb0ff; stroke-linecap: round; }
+
+  .star { cursor: grab; touch-action: none; }
+  .star.grabbing { cursor: grabbing; }
 
   .disc { transition: r 0.3s ease; }
   text {

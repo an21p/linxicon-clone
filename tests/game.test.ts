@@ -15,7 +15,7 @@ const validateWord = (w: string) =>
   VEC[w.toLowerCase()]
     ? ({ ok: true, word: w.toLowerCase() } as const)
     : ({ ok: false, reason: 'unknown' } as const);
-const generatePuzzle = async () => ({ a: 'alpha', b: 'omega', simAB: 0 });
+const generatePuzzle = async (_e: typeof embedder) => ({ a: 'alpha', b: 'omega', simAB: 0 });
 
 beforeEach(() => localStorage.clear());
 
@@ -60,5 +60,25 @@ describe('createGame', () => {
     await game.newGame();
     await game.submitWord('junk');
     expect(get(game.state).solved).toBe(false);
+  });
+
+  it('re-embeds the live graph when the embedder is swapped', async () => {
+    const game = createGame({ embedder, validateWord, generatePuzzle });
+    await game.newGame();
+    await game.submitWord('mid');               // 3 nodes: alpha, omega, mid
+    expect(get(game.state).wordCount).toBe(1);
+
+    // New backend: same words, different vectors (mid no longer bridges).
+    const ALT: Record<string, number[]> = {
+      alpha: [1, 0], omega: [0, 1], mid: [1, 0.001],
+    };
+    const alt = withCache(async (w: string) => new Float32Array(ALT[w] ?? [1, 0]));
+    game.setEmbedder(alt);
+    await game.reEmbedCurrent();
+
+    const s = get(game.state);
+    expect(s.nodes.map((n) => n.id).sort()).toEqual(['alpha', 'mid', 'omega']);
+    expect(s.wordCount).toBe(1);                // same words preserved
+    expect(s.solved).toBe(false);               // re-scored under the new backend
   });
 });

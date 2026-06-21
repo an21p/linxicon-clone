@@ -27,8 +27,8 @@ DIM = 300
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GZ = "/tmp/numberbatch-en.txt.gz"
 DICT_PATH = os.path.join(ROOT, "src", "lib", "words", "dictionary.json")
-BIN_PATH = os.path.join(ROOT, "public", "numberbatch.bin")
-INDEX_PATH = os.path.join(ROOT, "public", "numberbatch-index.json")
+BIN_PATH = os.path.join(ROOT, "data", "numberbatch.bin")
+INDEX_PATH = os.path.join(ROOT, "data", "numberbatch-index.json")
 NOUNS_PATH = os.path.join(ROOT, "src", "lib", "words", "nouns.ts")
 
 def load_current_dictionary():
@@ -77,6 +77,7 @@ def main():
         q = np.clip(np.round(v * QUANT_SCALE), -QUANT_SCALE, QUANT_SCALE)
         mat[i] = q.astype(np.int8)
 
+    os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
     # --- write assets ---
     with open(DICT_PATH, "w", encoding="utf-8") as f:
         json.dump(words, f)

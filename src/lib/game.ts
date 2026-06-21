@@ -1,5 +1,5 @@
 import { writable, type Readable } from 'svelte/store';
-import { GameEngine } from './engine/engine';
+import { GameEngine, DEFAULT_THRESHOLD } from './engine/engine';
 import type { WordNode, Edge } from './engine/types';
 import type { Embedder } from './embedder';
 import type { ValidationResult } from './dictionary';
@@ -26,6 +26,8 @@ export interface GameDeps {
   embedder: Embedder;
   validateWord: (raw: string) => ValidationResult;
   generatePuzzle: () => Puzzle;
+  /** Per-model connect/win threshold; defaults to the engine's DEFAULT_THRESHOLD. */
+  threshold?: number;
 }
 
 const EMPTY: GameState = {
@@ -39,6 +41,7 @@ export function createGame(deps: GameDeps) {
   let engine: GameEngine | null = null;
   let wonThisGame = false;
   let embedder = deps.embedder;
+  let threshold = deps.threshold ?? DEFAULT_THRESHOLD;
 
   function snapshot(lastWord: string | null): GameState {
     const e = engine!;
@@ -57,7 +60,7 @@ export function createGame(deps: GameDeps) {
   async function newGame(): Promise<void> {
     const p = deps.generatePuzzle();
     const [va, vb] = await Promise.all([embedder.embed(p.a), embedder.embed(p.b)]);
-    engine = new GameEngine({ word: p.a, vector: va }, { word: p.b, vector: vb });
+    engine = new GameEngine({ word: p.a, vector: va }, { word: p.b, vector: vb }, threshold);
     wonThisGame = false;
     state.set(snapshot(null));
   }
@@ -93,6 +96,11 @@ export function createGame(deps: GameDeps) {
     embedder = e;
   }
 
+  /** Set the per-model connect/win threshold; applied on the next (re-)build. */
+  function setThreshold(t: number): void {
+    threshold = t;
+  }
+
   /** Re-embed the current puzzle (same words) with the active embedder and rebuild edges/gap. */
   async function reEmbedCurrent(): Promise<void> {
     if (!engine) return;
@@ -100,7 +108,7 @@ export function createGame(deps: GameDeps) {
     const b = engine.targetB;
     const inter = engine.getNodes().filter((n) => !n.isTarget).map((n) => n.id);
     const [va, vb] = await Promise.all([embedder.embed(a), embedder.embed(b)]);
-    const next = new GameEngine({ word: a, vector: va }, { word: b, vector: vb });
+    const next = new GameEngine({ word: a, vector: va }, { word: b, vector: vb }, threshold);
     const vecs = await Promise.all(inter.map((w) => embedder.embed(w)));
     inter.forEach((w, i) => next.addWord(w, vecs[i]));
     engine = next;
@@ -114,6 +122,7 @@ export function createGame(deps: GameDeps) {
     submitWord,
     skip,
     setEmbedder,
+    setThreshold,
     reEmbedCurrent,
   };
 }

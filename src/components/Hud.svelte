@@ -9,6 +9,7 @@
   export let error: string | null = null;
   export let disabled = false;
   export let model: ModelId;
+  export let threshold = 0.41;
 
   let value = '';
   const dispatch = createEventDispatcher<{ submit: string; newgame: void; model: ModelId }>();
@@ -17,10 +18,9 @@
     dispatch('model', (e.currentTarget as HTMLSelectElement).value as ModelId);
   }
 
-  // gap is the widest path's similarity; the puzzle is solved at >= 0.41.
-  // surface it as "proximity" so the bar fills toward the join.
-  const THRESHOLD = 0.41;
-  $: proximity = Math.max(0, Math.min(1, gap / THRESHOLD));
+  // gap is the widest path's similarity; the puzzle is solved at >= the model's
+  // threshold. surface it as "proximity" so the bar fills toward the join.
+  $: proximity = Math.max(0, Math.min(1, gap / threshold));
   $: pct = (gap * 100).toFixed(1);
 
   function submit() {
@@ -55,7 +55,7 @@
         <div class="fill" style={`width:${proximity * 100}%`}></div>
       </div>
       <span class="gap" class:close={proximity > 0.66}>
-        gap&nbsp;<b>{pct}%</b>&nbsp;/&nbsp;{(THRESHOLD * 100).toFixed(0)}%
+        gap&nbsp;<b>{pct}%</b>&nbsp;/&nbsp;{(threshold * 100).toFixed(0)}%
       </span>
     </div>
 

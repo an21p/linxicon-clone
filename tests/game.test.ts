@@ -9,6 +9,7 @@ const VEC: Record<string, number[]> = {
   omega: [0, 1],
   mid: [1, 1],     // bridges alpha & omega
   junk: [0.39, Math.sqrt(1 - 0.39 ** 2)],
+  weak: [0.3, Math.sqrt(1 - 0.3 ** 2)], // 0.30 to alpha, ~0.95 to omega
 };
 const embedder = withCache(async (w: string) => new Float32Array(VEC[w] ?? [1, 0]));
 const validateWord = (w: string) =>
@@ -60,6 +61,31 @@ describe('createGame', () => {
     await game.newGame();
     await game.submitWord('junk');
     expect(get(game.state).solved).toBe(false);
+  });
+
+  it('uses a per-model threshold: a weak link connects only under a lower threshold', async () => {
+    // default threshold (0.41): weak is 0.30 to alpha -> no edge -> not solved
+    const strict = createGame({ embedder, validateWord, generatePuzzle });
+    await strict.newGame();
+    await strict.submitWord('weak');
+    expect(get(strict.state).solved).toBe(false);
+
+    // lower threshold (0.25): the same 0.30 link now connects -> solved
+    const loose = createGame({ embedder, validateWord, generatePuzzle, threshold: 0.25 });
+    await loose.newGame();
+    await loose.submitWord('weak');
+    expect(get(loose.state).solved).toBe(true);
+  });
+
+  it('setThreshold lowers the bar on the next re-embed', async () => {
+    const game = createGame({ embedder, validateWord, generatePuzzle }); // 0.41
+    await game.newGame();
+    await game.submitWord('weak');
+    expect(get(game.state).solved).toBe(false);
+
+    game.setThreshold(0.25);
+    await game.reEmbedCurrent();
+    expect(get(game.state).solved).toBe(true);
   });
 
   it('re-embeds the live graph when the embedder is swapped', async () => {

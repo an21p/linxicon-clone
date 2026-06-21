@@ -7,7 +7,7 @@
   import { validateWord } from './lib/dictionary';
   import { generatePuzzle } from './lib/puzzles';
   import { loadSeed, advanceSeed, seededRng, type Seed } from './lib/seed';
-  import { DEFAULT_MODEL, isModelId, type ModelId } from './lib/models';
+  import { DEFAULT_MODEL, isModelId, MODELS, type ModelId } from './lib/models';
 
   const STORAGE_KEY = 'linxicon.model';
 
@@ -26,6 +26,7 @@
     embedder: emb.embedder,
     validateWord,
     generatePuzzle: () => generatePuzzle({ rng: seededRng(seed.day, seed.count) }),
+    threshold: MODELS[model].threshold,
   });
   const { state, stats } = game;
 
@@ -59,6 +60,7 @@
     emb.destroy();
     emb = createEmbeddings(next);
     game.setEmbedder(emb.embedder);
+    game.setThreshold(MODELS[next].threshold);
     bindEmbeddings(emb, async () => {
       try {
         await game.reEmbedCurrent();   // same puzzle, re-scored under the new backend
@@ -122,7 +124,7 @@
     <Hud
       targetA={$state.targetA} targetB={$state.targetB}
       wordCount={$state.wordCount} gap={$state.gap}
-      best={$stats.best} {error} disabled={busy} {model}
+      best={$stats.best} {error} disabled={busy} {model} threshold={MODELS[model].threshold}
       on:submit={onSubmit} on:newgame={onNewGame} on:model={onModelChange} />
     <div class="canvas">
       {#key model}

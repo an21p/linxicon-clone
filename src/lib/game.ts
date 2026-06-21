@@ -101,6 +101,47 @@ export function createGame(deps: GameDeps) {
     threshold = t;
   }
 
+  /**
+   * Rebuild the current board at the active threshold using the words' existing
+   * vectors — no re-embedding. Cheap enough to drive from a live threshold slider.
+   */
+  function rescore(): void {
+    if (!engine) return;
+    const nodes = engine.getNodes();
+    const a = nodes.find((n) => n.id === engine!.targetA)!;
+    const b = nodes.find((n) => n.id === engine!.targetB)!;
+    const next = new GameEngine({ word: a.id, vector: a.vector }, { word: b.id, vector: b.vector }, threshold);
+    for (const n of nodes) if (!n.isTarget) next.addWord(n.id, n.vector);
+    engine = next;
+    state.set(snapshot(null));
+  }
+
+  /** Ordered word ids along the widest bridge from targetA to targetB (for the reveal). */
+  function bridgePath(): string[] {
+    return engine ? engine.bridgePath() : [];
+  }
+
+  /** The weakest link on the current bridge path — the gap a hint should target. */
+  function bottleneckLink() {
+    return engine ? engine.bottleneckLink() : null;
+  }
+
+  /** The intermediate words placed this game, in insertion order (excludes targets). */
+  function getWords(): string[] {
+    return engine ? engine.getNodes().filter((n) => !n.isTarget).map((n) => n.id) : [];
+  }
+
+  /** Re-add previously saved words to the current puzzle (re-embedding each). */
+  async function restoreWords(words: string[]): Promise<void> {
+    if (!engine || words.length === 0) return;
+    for (const w of words) {
+      if (engine.has(w)) continue;
+      const vec = await embedder.embed(w);
+      engine.addWord(w, vec);
+    }
+    state.set(snapshot(null));
+  }
+
   /** Re-embed the current puzzle (same words) with the active embedder and rebuild edges/gap. */
   async function reEmbedCurrent(): Promise<void> {
     if (!engine) return;
@@ -123,6 +164,11 @@ export function createGame(deps: GameDeps) {
     skip,
     setEmbedder,
     setThreshold,
+    rescore,
     reEmbedCurrent,
+    bridgePath,
+    bottleneckLink,
+    getWords,
+    restoreWords,
   };
 }

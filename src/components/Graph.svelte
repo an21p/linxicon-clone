@@ -11,8 +11,19 @@
   export let targetA = '';
   export let targetB = '';
   export let lastWord: string | null = null;
+  export let revealPath: string[] = [];
+  export let revealStep = -1;
 
-  type SimNode = { id: string; isTarget: boolean; x?: number; y?: number; fx?: number | null; fy?: number | null };
+  // reveal state: which words are lit so far, and the one being spotlighted now
+  $: revealing = revealStep >= 0;
+  $: revealSet = new Set(revealing ? revealPath.slice(0, revealStep + 1) : []);
+  $: revealActive = revealing ? revealPath[revealStep] : null;
+  // the bridge segments drawn so far (consecutive lit pairs)
+  $: revealSegments = revealing
+    ? revealPath.slice(0, revealStep + 1).slice(1).map((id, i) => [revealPath[i], id] as [string, string])
+    : [];
+
+  type SimNode = { id: string; isTarget: boolean; x?: number; y?: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null };
   type SimLink = { source: string; target: string; sim: number; key: string };
 
   // `width`/`height` track the SVG's real rendered size (bound below), so the
@@ -31,6 +42,13 @@
 
   const IDLE_ALPHA = 0.015; // never fully freeze — a gentle perpetual drift
   const DRAG_ALPHA = 0.3;   // heat the sim while a star is held
+  const BASE_LINK_STRENGTH = 0.7;
+  const DRAG_LINK_STRENGTH = 1;   // linked stars track a dragged star tightly
+  const RELEASE_ALPHA = 0.12;     // gentle re-settle on release — no fling/snap
+
+  function linkForce() {
+    return sim?.force('link') as ReturnType<typeof forceLink<SimNode, SimLink>> | undefined;
+  }
 
   // keep every star fully inside the frame: clear its glow radius on each side,
   // plus extra room beneath targets for their label. Applies to a pinned (fx/fy)
@@ -61,7 +79,7 @@
         .force('charge', forceManyBody().strength(-400))
         .force('center', center)
         .force('collide', forceCollide(42))
-        .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120).strength(0.7))
+        .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(120).strength(BASE_LINK_STRENGTH))
         .on('tick', () => {
           for (const n of simNodes) clampNode(n); // keep nodes inside the frame
           positions = Object.fromEntries(simNodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
@@ -95,12 +113,38 @@
     return `M${s.x},${s.y} Q${mx - dy * off},${my + dx * off} ${t.x},${t.y}`;
   }
 
-  // --- drag: grab a star, the constellation reacts live, fling it back on release ---
+  // ids directly linked to `id` (resolving d3's possibly-mutated link ends)
+  function neighborsOf(id: string): Set<string> {
+    const s = new Set<string>();
+    for (const l of simLinks) {
+      const a = endId(l.source), b = endId(l.target);
+      if (a === id) s.add(b);
+      else if (b === id) s.add(a);
+    }
+    return s;
+  }
+  // freeze everything except the grabbed star and its direct links, so only that
+  // local cluster reacts to the drag — the rest of the chart stays put
+  function pinOthers(n: SimNode) {
+    const keep = neighborsOf(n.id);
+    for (const m of simNodes) {
+      if (m === n || keep.has(m.id)) continue;
+      m.fx = m.x ?? 0;
+      m.fy = m.y ?? 0;
+    }
+  }
+  function releaseAll() {
+    for (const m of simNodes) { m.fx = null; m.fy = null; }
+  }
+
+  // --- drag: grab a star, its local cluster reacts live, fling it back on release ---
   function dragStart(e: PointerEvent, n: SimNode) {
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     dragNode = n;
     dragId = e.pointerId;
+    pinOthers(n);
+    linkForce()?.strength(DRAG_LINK_STRENGTH); // neighbours follow the grabbed star tightly
     n.fx = n.x ?? 0;
     n.fy = n.y ?? 0;
     sim?.alphaTarget(DRAG_ALPHA).restart();
@@ -116,11 +160,15 @@
   function dragEnd(e: PointerEvent, n: SimNode) {
     if (dragNode !== n) return;
     (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
-    n.fx = null; // release into the physics and let it re-settle
-    n.fy = null;
+    linkForce()?.strength(BASE_LINK_STRENGTH);
+    // smooth release: zero the held star's velocity and cool gently so it eases
+    // into place instead of snapping back under the forces.
+    n.vx = 0; n.vy = 0;
+    releaseAll();
     dragNode = null;
     dragId = null;
     sim?.alphaTarget(IDLE_ALPHA);
+    sim?.alpha(RELEASE_ALPHA).restart();
   }
 
   // Re-settle whenever the node set or any edge similarity changes — i.e. a word
@@ -185,6 +233,15 @@
     {/if}
   {/each}
 
+  <!-- bridge trace: the widest path A→B, drawn as it's revealed -->
+  {#each revealSegments as [a, b], i (`${a}-${b}`)}
+    {@const s = positions[a]}
+    {@const t = positions[b]}
+    {#if s && t}
+      <path d={arc(s, t)} class="trace" style={`--i:${i}`} />
+    {/if}
+  {/each}
+
   <!-- stars -->
   {#each simNodes as n (n.id)}
     {#if positions[n.id]}
@@ -193,6 +250,8 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <g class="star" transform={`translate(${p.x}, ${p.y})`}
         class:pop={n.id === lastWord} class:target={isTarget} class:grabbing={dragNode === n}
+        class:lit={revealSet.has(n.id)} class:active={n.id === revealActive}
+        class:dim={revealing && !revealSet.has(n.id)}
         on:pointerdown={(e) => dragStart(e, n)}
         on:pointermove={(e) => dragMove(e, n)}
         on:pointerup={(e) => dragEnd(e, n)}
@@ -207,8 +266,8 @@
           <!-- a four-point sparkle marks a named star -->
           <path class="sparkle" d="M0,-34 L2.4,-2.4 34,0 2.4,2.4 0,34 -2.4,2.4 -34,0 -2.4,-2.4 Z" />
         {/if}
-        <text text-anchor="middle" dy={isTarget ? 38 : 4} class:label-target={isTarget}
-          fill={isTarget ? '#ffe6ad' : '#e7ebff'} font-size={isTarget ? 14 : 11.5}>{n.id}</text>
+        <text text-anchor="middle" dy={isTarget ? 44 : 5} class:label-target={isTarget}
+          fill={isTarget ? '#ffe6ad' : '#e7ebff'} font-size={isTarget ? 18 : 15}>{n.id}</text>
       </g>
     {/if}
   {/each}
@@ -242,6 +301,31 @@
 
   .star { cursor: grab; touch-action: none; }
   .star.grabbing { cursor: grabbing; }
+
+  /* --- result reveal --- */
+  .star { transition: opacity 0.5s ease; }
+  .star.dim { opacity: 0.16; }
+  .star.lit { opacity: 1; }
+  .star.active .disc { animation: spotlight 0.7s ease; }
+  .star.active .halo { opacity: 1; }
+  .star.active text { fill: #fff6e0; }
+  .trace {
+    fill: none;
+    stroke: var(--cyan, #74e3da);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-opacity: 0.9;
+    filter: url(#bloom);
+    stroke-dasharray: 600;
+    stroke-dashoffset: 600;
+    animation: draw-trace 0.6s ease forwards;
+  }
+  @keyframes draw-trace { to { stroke-dashoffset: 0; } }
+  @keyframes spotlight {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.5); }
+    100% { transform: scale(1); }
+  }
 
   .disc { transition: r 0.3s ease; }
   text {

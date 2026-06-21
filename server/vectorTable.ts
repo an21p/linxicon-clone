@@ -30,6 +30,32 @@ export class VectorTable {
     return new VectorTable(matrix, index.words, index.dim);
   }
 
+  /**
+   * Best bridging candidate between two anchor vectors: the word (restricted to
+   * `candidates` ∩ this table, minus `exclude`) maximizing the *weaker* of its two
+   * similarities, i.e. the word most similar to BOTH anchors. Anchors are assumed
+   * L2-normalized, so cosine == dot product.
+   */
+  bestBridge(
+    u: Float32Array,
+    v: Float32Array,
+    candidates: Iterable<string>,
+    exclude: Set<string>,
+  ): { word: string; score: number } | null {
+    let best: string | null = null;
+    let bestScore = -Infinity;
+    for (const w of candidates) {
+      if (exclude.has(w)) continue;
+      const vec = this.lookup(w);
+      if (!vec) continue;
+      let du = 0, dv = 0;
+      for (let i = 0; i < this.dim; i++) { du += u[i] * vec[i]; dv += v[i] * vec[i]; }
+      const score = Math.min(du, dv);
+      if (score > bestScore) { bestScore = score; best = w; }
+    }
+    return best === null ? null : { word: best, score: bestScore };
+  }
+
   /** Dequantized (÷127), L2-normalized vector for `word`, or null if absent. */
   lookup(word: string): Float32Array | null {
     const row = this.rowOf.get(word);

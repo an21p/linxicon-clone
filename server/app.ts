@@ -12,6 +12,13 @@ interface EmbedBody {
   words?: unknown;
 }
 
+interface HintBody {
+  model?: unknown;
+  a?: unknown;
+  b?: unknown;
+  exclude?: unknown;
+}
+
 // Bounds keep the public (tunnel-exposed) API cheap to serve: a long word would
 // otherwise stall the single-threaded MiniLM live-inference fallback.
 const MAX_WORDS = 256;
@@ -35,6 +42,24 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     const vectors = await deps.service.embed(model, words as string[]);
     return { model, dim: deps.service.dim(model), vectors };
+  });
+
+  // Suggest the dictionary word that best bridges two anchor words (the endpoints
+  // of the current weakest link) under the given model.
+  app.post('/api/hint', async (req, reply) => {
+    const { model, a, b, exclude } = (req.body ?? {}) as HintBody;
+    if (!isModelId(model)) return reply.code(400).send({ error: 'unknown model' });
+    if (
+      typeof a !== 'string' || typeof b !== 'string' ||
+      a.length > MAX_WORD_LEN || b.length > MAX_WORD_LEN ||
+      (exclude !== undefined &&
+        (!Array.isArray(exclude) || exclude.length > MAX_WORDS ||
+          !exclude.every((w) => typeof w === 'string' && w.length <= MAX_WORD_LEN)))
+    ) {
+      return reply.code(400).send({ error: 'a and b must be words; exclude an optional string[]' });
+    }
+    const result = await deps.service.hint(model, a, b, (exclude as string[]) ?? []);
+    return { word: result?.word ?? null, score: result?.score ?? null };
   });
 
   if (deps.staticDir) {

@@ -63,6 +63,30 @@ describe('GameEngine connectivity', () => {
     e.addWord('weak', [0.39, Math.sqrt(1 - 0.39 ** 2)]); // sim(A,weak)=0.39, sim(B,weak)<threshold
     expect(e.isSolved()).toBe(false);
   });
+
+  it('bridgePath is just the two targets when no words are placed', () => {
+    const e = new GameEngine(A, B);
+    expect(e.bridgePath()).toEqual(['a', 'b']);
+  });
+
+  it('bridgePath threads from A through the middle word to B', () => {
+    const e = new GameEngine(A, B);
+    e.addWord('mid', mid);
+    expect(e.bridgePath()).toEqual(['a', 'mid', 'b']);
+  });
+
+  it('bridgePath picks the widest chain when several exist', () => {
+    // 'near' bridges both targets strongly; 'far' only weakly. The widest
+    // (max-bottleneck) path should route through 'near'.
+    const e = new GameEngine(A, B);
+    e.addWord('near', [1, 1]);                              // sim ~0.707 to each
+    e.addWord('far', [0.42, Math.sqrt(1 - 0.42 ** 2)]);    // weaker bottleneck
+    const path = e.bridgePath();
+    expect(path[0]).toBe('a');
+    expect(path[path.length - 1]).toBe('b');
+    expect(path).toContain('near');
+    expect(path).not.toContain('far');
+  });
 });
 
 describe('GameEngine scoring', () => {

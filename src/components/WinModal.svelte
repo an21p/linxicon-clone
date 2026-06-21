@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   export let wordCount = 0;
   export let best: number | null = null;
-  const dispatch = createEventDispatcher<{ again: void }>();
+  const dispatch = createEventDispatcher<{ again: void; trace: void }>();
   $: isBest = best == null || wordCount <= best;
 </script>
 
@@ -30,7 +30,10 @@
       <span class="badge" class:best={isBest}>{isBest ? '★ new best' : `best · ${best}`}</span>
     </div>
 
-    <button on:click={() => dispatch('again')}>chart another →</button>
+    <div class="actions">
+      <button class="ghost" on:click={() => dispatch('trace')}>trace the bridge</button>
+      <button on:click={() => dispatch('again')}>chart another →</button>
+    </div>
   </div>
 </div>
 
@@ -115,6 +118,7 @@
     box-shadow: 0 0 24px -4px rgba(240, 198, 116, 0.7);
   }
 
+  .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   button {
     font-family: var(--mono);
     text-transform: uppercase;
@@ -131,6 +135,15 @@
   button:hover {
     background: rgba(240, 198, 116, 0.12);
     box-shadow: 0 0 30px -8px rgba(240, 198, 116, 0.6);
+  }
+  button.ghost {
+    border-color: var(--panel-line);
+    color: var(--star-dim);
+  }
+  button.ghost:hover {
+    color: var(--star);
+    background: rgba(150, 168, 224, 0.08);
+    box-shadow: none;
   }
 
   @keyframes veil { from { opacity: 0; } to { opacity: 1; } }

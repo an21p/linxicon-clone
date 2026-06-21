@@ -5,6 +5,7 @@ import {
   seededRng,
   loadSeed,
   advanceSeed,
+  puzzleFromQuery,
   SEED_STORAGE_KEY,
   type SeedStore,
 } from '../src/lib/seed';
@@ -57,6 +58,33 @@ describe('seed', () => {
     const store = fakeStore(JSON.stringify({ day: 20000, count: 3 }));
     const now = DAY * 20001;
     expect(loadSeed(store, now)).toEqual({ day: 20001, count: 0 });
+  });
+
+  it('puzzleFromQuery parses a valid non-negative integer puzzle param', () => {
+    expect(puzzleFromQuery('?puzzle=5')).toBe(5);
+    expect(puzzleFromQuery('?puzzle=0')).toBe(0);
+    expect(puzzleFromQuery('?foo=1&puzzle=12')).toBe(12);
+  });
+
+  it('puzzleFromQuery returns null when absent or malformed', () => {
+    expect(puzzleFromQuery('')).toBeNull();
+    expect(puzzleFromQuery('?foo=1')).toBeNull();
+    expect(puzzleFromQuery('?puzzle=-1')).toBeNull();
+    expect(puzzleFromQuery('?puzzle=1.5')).toBeNull();
+    expect(puzzleFromQuery('?puzzle=abc')).toBeNull();
+  });
+
+  it('loadSeed takes the puzzle number from ?puzzle=N for today and persists it', () => {
+    const store = fakeStore(JSON.stringify({ day: 20000, count: 3 }));
+    const now = DAY * 20000;
+    expect(loadSeed(store, now, '?puzzle=7')).toEqual({ day: 20000, count: 7 });
+    expect(JSON.parse(store.value!)).toEqual({ day: 20000, count: 7 });
+  });
+
+  it('loadSeed ignores a malformed puzzle param and falls back to storage', () => {
+    const store = fakeStore(JSON.stringify({ day: 20000, count: 3 }));
+    const now = DAY * 20000;
+    expect(loadSeed(store, now, '?puzzle=nope')).toEqual({ day: 20000, count: 3 });
   });
 
   it('advanceSeed increments count within the same day and persists', () => {

@@ -37,13 +37,40 @@ export interface SeedStore {
 
 export const SEED_STORAGE_KEY = 'linxicon.seed';
 
+/** URL query param carrying the puzzle number (the seed's `count`). */
+export const PUZZLE_PARAM = 'puzzle';
+
 /**
- * Current seed for today. If nothing is stored, the stored seed is from an
- * earlier day, or it is malformed, resets to today's first puzzle (count 0)
- * and persists it.
+ * Parse the puzzle number from a query string (e.g. `?puzzle=5`). Returns a
+ * non-negative integer, or null when the param is absent or malformed.
  */
-export function loadSeed(store: SeedStore = localStorage, now: number = Date.now()): Seed {
+export function puzzleFromQuery(search: string): number | null {
+  const raw = new URLSearchParams(search).get(PUZZLE_PARAM);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Current seed for today. The puzzle number (`count`) is taken from the
+ * `?puzzle=N` query param when present and valid; otherwise it falls back to
+ * the stored seed (or today's first puzzle, count 0). The day is always today.
+ * The resolved seed is persisted so reloads without the param stay stable.
+ */
+export function loadSeed(
+  store: SeedStore = localStorage,
+  now: number = Date.now(),
+  search = '',
+): Seed {
   const today = todayNumber(now);
+
+  const fromUrl = puzzleFromQuery(search);
+  if (fromUrl !== null) {
+    const seed: Seed = { day: today, count: fromUrl };
+    store.setItem(SEED_STORAGE_KEY, JSON.stringify(seed));
+    return seed;
+  }
+
   let parsed: Partial<Seed> | null = null;
   try {
     const raw = store.getItem(SEED_STORAGE_KEY);

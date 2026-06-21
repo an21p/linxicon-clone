@@ -7,6 +7,8 @@ const API_BASE = '/api';
 export interface EmbeddingsHandle {
   modelId: ModelId;
   embedder: Embedder;
+  /** Ask the service for the best dictionary word bridging `a` and `b`. */
+  hint(a: string, b: string, exclude: string[]): Promise<string | null>;
   onProgress(cb: (progress: number) => void): void;
   onReady(cb: () => void): void;
   onError(cb: (message: string) => void): void;
@@ -60,9 +62,22 @@ export function createEmbeddings(modelId: ModelId = DEFAULT_MODEL): EmbeddingsHa
     }
   });
 
+  const hint = async (a: string, b: string, exclude: string[]): Promise<string | null> => {
+    const res = await fetch(`${API_BASE}/hint`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: modelId, a, b, exclude }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`hint ${modelId} -> ${res.status}`);
+    const data = (await res.json()) as { word: string | null };
+    return data.word;
+  };
+
   return {
     modelId,
     embedder: withCache(embedFn, store),
+    hint,
     onProgress(cb) { progressCb = cb; },
     onReady(cb) { readyCb = cb; if (readyFired) cb(); },
     onError(cb) { errorCb = cb; if (errorMessage) cb(errorMessage); },

@@ -1,32 +1,80 @@
 <script lang="ts">
   import Graph from './components/Graph.svelte';
+  import VennBoard from './components/VennBoard.svelte';
+  import LinksPanel from './components/LinksPanel.svelte';
   import Hud from './components/Hud.svelte';
   import WinModal from './components/WinModal.svelte';
   import { createGame } from './lib/game';
   import { createEmbeddings, type EmbeddingsHandle } from './lib/embeddings';
   import { validateWord } from './lib/dictionary';
   import { generatePuzzle } from './lib/puzzles';
-  import { loadSeed, advanceSeed, seededRng, type Seed } from './lib/seed';
+  import { loadSeed, advanceSeed, seededRng, PUZZLE_PARAM, type Seed } from './lib/seed';
   import { DEFAULT_MODEL, isModelId, MODELS, type ModelId } from './lib/models';
+  import { puzzleKey, loadWords, saveWords } from './lib/savedGames';
 
   const STORAGE_KEY = 'linxicon.model';
+  const VIEW_PARAM = 'view';
 
   function loadModel(): ModelId {
     const saved = localStorage.getItem(STORAGE_KEY);
     return isModelId(saved) ? saved : DEFAULT_MODEL;
   }
 
+  type View = 'graph' | 'venn';
+  function loadView(): View {
+    return new URLSearchParams(location.search).get(VIEW_PARAM) === 'venn' ? 'venn' : 'graph';
+  }
+  let view: View = loadView();
+
+  function setView(next: View) {
+    if (next === view) return;
+    view = next;
+    const url = new URL(location.href);
+    url.searchParams.set(VIEW_PARAM, next);
+    history.replaceState(history.state, '', url);
+  }
+
+  // Per-model connect/win threshold, adjustable at runtime for testing and
+  // persisted so a tuned value survives reloads. Defaults to each model's value.
+  const THRESH_KEY = 'linxicon.thresholds';
+  function loadThresholds(): Record<ModelId, number> {
+    const base = { minilm: MODELS.minilm.threshold, numberbatch: MODELS.numberbatch.threshold };
+    try {
+      const saved = JSON.parse(localStorage.getItem(THRESH_KEY) ?? '{}');
+      if (typeof saved.minilm === 'number') base.minilm = saved.minilm;
+      if (typeof saved.numberbatch === 'number') base.numberbatch = saved.numberbatch;
+    } catch { /* ignore malformed */ }
+    return base;
+  }
+  let thresholds: Record<ModelId, number> = loadThresholds();
+
   let model: ModelId = loadModel();
+  $: threshold = thresholds[model];
   let emb: EmbeddingsHandle = createEmbeddings(model);
 
   // Deterministic daily puzzle: reload keeps the same words; "new chart" advances the count.
-  let seed: Seed = loadSeed();
+  // The puzzle number (count) is sourced from / reflected in the ?puzzle=N query param.
+  let seed: Seed = loadSeed(localStorage, Date.now(), location.search);
+  syncPuzzleUrl(seed.count);
+
+  // Persist/restore the words placed in each puzzle, keyed by day+count.
+  $: currentKey = puzzleKey(seed.day, seed.count);
+  function persistWords() {
+    saveWords(localStorage, currentKey, game.getWords());
+  }
+
+  // Reflect the current puzzle number in the address bar without adding history entries.
+  function syncPuzzleUrl(count: number) {
+    const url = new URL(location.href);
+    url.searchParams.set(PUZZLE_PARAM, String(count));
+    history.replaceState(history.state, '', url);
+  }
 
   const game = createGame({
     embedder: emb.embedder,
     validateWord,
     generatePuzzle: () => generatePuzzle({ rng: seededRng(seed.day, seed.count) }),
-    threshold: MODELS[model].threshold,
+    threshold: thresholds[model],
   });
   const { state, stats } = game;
 
@@ -36,6 +84,43 @@
   let fatalError: string | null = null;
   let busy = false;
 
+  // --- result reveal: walk the bridge path A→B, lighting one word at a time ---
+  const REVEAL_STEP_MS = 700;
+  let revealPath: string[] = [];
+  let revealStep = -1; // -1 = inactive; otherwise index of the word being lit
+  let revealTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function stopReveal() {
+    if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+    revealStep = -1;
+    revealPath = [];
+  }
+
+  function startReveal() {
+    stopReveal();
+    const path = game.bridgePath();
+    if (path.length < 2) return;
+    revealPath = path;
+    revealStep = 0;
+    const tick = () => {
+      if (revealStep >= revealPath.length - 1) {
+        revealTimer = setTimeout(stopReveal, 1800); // hold the full bridge, then clear
+        return;
+      }
+      revealStep += 1;
+      revealTimer = setTimeout(tick, REVEAL_STEP_MS);
+    };
+    revealTimer = setTimeout(tick, REVEAL_STEP_MS);
+  }
+
+  // On a win, trace the bridge automatically first; the modal waits until it ends.
+  let revealedForWin = false;
+  $: if ($state.solved && !revealedForWin) { revealedForWin = true; startReveal(); }
+  $: if (!$state.solved) revealedForWin = false;
+
+  // suppress the win modal while the bridge is being traced
+  $: showWin = $state.solved && revealStep < 0;
+
   function bindEmbeddings(handle: EmbeddingsHandle, onReady: () => void | Promise<void>) {
     progress = 0;
     handle.onProgress((p) => (progress = p));
@@ -43,14 +128,19 @@
     handle.onError((m) => (fatalError = m));
   }
 
+  async function restoreSaved() {
+    await game.restoreWords(loadWords(localStorage, puzzleKey(seed.day, seed.count)));
+  }
+
   bindEmbeddings(emb, async () => {
-    try { await game.newGame(); ready = true; }
+    try { await game.newGame(); await restoreSaved(); ready = true; }
     catch { fatalError = 'Could not start a game. Please reload.'; }
   });
 
   async function onModelChange(e: CustomEvent<ModelId>) {
     const next = e.detail;
     if (next === model || busy) return;
+    stopReveal();
     model = next;
     localStorage.setItem(STORAGE_KEY, next);
     error = null;
@@ -60,7 +150,7 @@
     emb.destroy();
     emb = createEmbeddings(next);
     game.setEmbedder(emb.embedder);
-    game.setThreshold(MODELS[next].threshold);
+    game.setThreshold(thresholds[next]);
     bindEmbeddings(emb, async () => {
       try {
         await game.reEmbedCurrent();   // same puzzle, re-scored under the new backend
@@ -73,13 +163,46 @@
     });
   }
 
+  function onThresholdChange(e: CustomEvent<number>) {
+    if (busy) return;
+    stopReveal();
+    thresholds = { ...thresholds, [model]: e.detail };
+    localStorage.setItem(THRESH_KEY, JSON.stringify(thresholds));
+    game.setThreshold(e.detail);
+    game.rescore(); // re-link the current board live, no re-embedding
+  }
+
+  async function onHint() {
+    if (busy) return;
+    stopReveal();
+    error = null;
+    busy = true;
+    try {
+      const bl = game.bottleneckLink();
+      if (!bl) { error = 'add a word first'; return; }
+      const exclude = [$state.targetA, $state.targetB, ...game.getWords()];
+      const word = await emb.hint(bl.a, bl.b, exclude);
+      if (!word) { error = 'no hint available'; return; }
+      const res = await game.submitWord(word);
+      if (res.ok) persistWords();
+      else error = 'that hint was already on the board';
+    } catch {
+      error = 'could not fetch a hint';
+    } finally {
+      busy = false;
+    }
+  }
+
   async function onSubmit(e: CustomEvent<string>) {
     if (busy) return; // ignore re-submits while a word is being embedded
+    stopReveal();
     error = null;
     busy = true;
     try {
       const res = await game.submitWord(e.detail);
-      if (!res.ok) {
+      if (res.ok) {
+        persistWords();
+      } else {
         error = res.reason === 'duplicate' ? 'already on the board'
           : res.reason === 'unknown' ? 'not a recognized word'
           : 'enter a single word';
@@ -92,9 +215,10 @@
   }
 
   async function onNewGame() {
+    stopReveal();
     error = null;
     busy = true;
-    try { game.skip(); seed = advanceSeed(); await game.newGame(); }
+    try { game.skip(); seed = advanceSeed(); syncPuzzleUrl(seed.count); await game.newGame(); await restoreSaved(); }
     catch { error = 'could not start a new game'; }
     finally { busy = false; }
   }
@@ -124,18 +248,32 @@
     <Hud
       targetA={$state.targetA} targetB={$state.targetB}
       wordCount={$state.wordCount} gap={$state.gap}
-      best={$stats.best} {error} disabled={busy} {model} threshold={MODELS[model].threshold}
-      on:submit={onSubmit} on:newgame={onNewGame} on:model={onModelChange} />
+      best={$stats.best} {error} disabled={busy} {model} {threshold} {view}
+      on:submit={onSubmit} on:newgame={onNewGame} on:model={onModelChange}
+      on:view={(e) => setView(e.detail)} on:threshold={onThresholdChange} on:hint={onHint} />
     <div class="canvas">
-      {#key model}
-        <Graph
-          nodes={$state.nodes} edges={$state.edges}
-          targetA={$state.targetA} targetB={$state.targetB}
-          lastWord={$state.lastWord} />
-      {/key}
+      <LinksPanel edges={$state.edges} targetA={$state.targetA} targetB={$state.targetB} />
+      <div class="board">
+        {#key model}
+          {#if view === 'venn'}
+            <VennBoard
+              nodes={$state.nodes} edges={$state.edges}
+              targetA={$state.targetA} targetB={$state.targetB}
+              lastWord={$state.lastWord} {threshold}
+              {revealPath} {revealStep} />
+          {:else}
+            <Graph
+              nodes={$state.nodes} edges={$state.edges}
+              targetA={$state.targetA} targetB={$state.targetB}
+              lastWord={$state.lastWord}
+              {revealPath} {revealStep} />
+          {/if}
+        {/key}
+      </div>
     </div>
-    {#if $state.solved}
-      <WinModal wordCount={$state.wordCount} best={$stats.best} on:again={onNewGame} />
+    {#if showWin}
+      <WinModal wordCount={$state.wordCount} best={$stats.best}
+        on:again={onNewGame} on:trace={startReveal} />
     {/if}
   {/if}
 </main>
@@ -148,7 +286,23 @@
     max-width: 1180px;
     margin: 0 auto;
   }
-  .canvas { flex: 1; min-height: 0; padding: 8px 16px 18px; }
+  .canvas {
+    flex: 1;
+    min-height: 0;
+    padding: 8px 16px 18px;
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) 1fr;
+    gap: 14px;
+  }
+  .board { min-width: 0; min-height: 0; }
+
+  @media (max-width: 760px) {
+    .canvas {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+    }
+    .board { order: -1; min-height: 320px; }
+  }
 
   .loading {
     display: grid;

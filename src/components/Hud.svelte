@@ -10,9 +10,14 @@
   export let disabled = false;
   export let model: ModelId;
   export let threshold = 0.41;
+  export let view: 'graph' | 'venn' = 'graph';
 
   let value = '';
-  const dispatch = createEventDispatcher<{ submit: string; newgame: void; model: ModelId }>();
+  const dispatch = createEventDispatcher<{ submit: string; newgame: void; model: ModelId; view: 'graph' | 'venn'; threshold: number; hint: void }>();
+
+  function onThreshold(e: Event) {
+    dispatch('threshold', Number((e.currentTarget as HTMLInputElement).value));
+  }
 
   function onModelChange(e: Event) {
     dispatch('model', (e.currentTarget as HTMLSelectElement).value as ModelId);
@@ -38,6 +43,13 @@
       <span class="name">Linxicon</span>
     </div>
     <div class="readouts">
+      <div class="viewtoggle" role="group" aria-label="board view">
+        <button type="button" class:on={view === 'graph'} aria-pressed={view === 'graph'}
+          on:click={() => dispatch('view', 'graph')}>graph</button>
+        <button type="button" class:on={view === 'venn'} aria-pressed={view === 'venn'}
+          on:click={() => dispatch('view', 'venn')}>venn</button>
+      </div>
+      <span class="div">·</span>
       <span class="ro"><b>{wordCount}</b><i>stars placed</i></span>
       <span class="div">·</span>
       <span class="ro"><b>{best ?? '—'}</b><i>best</i></span>
@@ -78,6 +90,7 @@
         aria-label="add a word" />
       <button type="submit" class="add" {disabled} aria-label="place word">place</button>
     </div>
+    <button type="button" class="ghost" on:click={() => dispatch('hint')} {disabled}>✦ hint</button>
     <button type="button" class="ghost" on:click={() => dispatch('newgame')}>new chart</button>
     <label class="lens">
       <span class="lens-label">lens</span>
@@ -86,6 +99,12 @@
           <option value={m.id}>{m.label}</option>
         {/each}
       </select>
+    </label>
+    <label class="lens thresh">
+      <span class="lens-label">link</span>
+      <input type="range" min="0.05" max="0.95" step="0.01" value={threshold}
+        on:input={onThreshold} {disabled} aria-label="link threshold" />
+      <b class="thresh-val">{(threshold * 100).toFixed(0)}%</b>
     </label>
   </form>
 
@@ -119,7 +138,32 @@
     letter-spacing: 0.01em;
     color: var(--star);
   }
-  .readouts { display: flex; align-items: baseline; gap: 12px; font-size: 11px; }
+  .readouts { display: flex; align-items: center; gap: 12px; font-size: 11px; }
+
+  .viewtoggle {
+    display: inline-flex;
+    border: 1px solid var(--panel-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .viewtoggle button {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 5px 11px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+  }
+  .viewtoggle button:hover { color: var(--star-dim); }
+  .viewtoggle button.on {
+    color: #2a1c06;
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  }
   .ro { display: inline-flex; align-items: baseline; gap: 6px; color: var(--muted); }
   .ro b { color: var(--gold-bright); font-size: 14px; font-weight: 400; }
   .ro i { font-style: normal; text-transform: uppercase; letter-spacing: 0.14em; }
@@ -292,6 +336,22 @@
   .lens select:focus { outline: none; }
   .lens select:disabled { opacity: 0.4; cursor: progress; }
   .lens select option { background: var(--panel); color: var(--star); }
+
+  .thresh input[type='range'] {
+    width: 96px;
+    accent-color: var(--gold);
+    cursor: pointer;
+    background: transparent;
+  }
+  .thresh input[type='range']:disabled { opacity: 0.4; cursor: progress; }
+  .thresh-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--gold-bright);
+    width: 3.4ch;
+    text-align: right;
+  }
 
   .status { min-height: 18px; text-align: center; margin: 0; }
   .error {

@@ -88,6 +88,19 @@ describe('createGame', () => {
     expect(get(game.state).solved).toBe(true);
   });
 
+  it('rescore re-thresholds the live board without re-embedding', async () => {
+    const game = createGame({ embedder, validateWord, generatePuzzle }); // 0.41
+    await game.newGame();
+    await game.submitWord('weak'); // 0.30 to alpha -> no edge at 0.41
+    expect(get(game.state).solved).toBe(false);
+
+    game.setThreshold(0.25);
+    game.rescore(); // synchronous, reuses existing vectors
+    const s = get(game.state);
+    expect(s.solved).toBe(true);
+    expect(s.wordCount).toBe(1); // same words preserved
+  });
+
   it('re-embeds the live graph when the embedder is swapped', async () => {
     const game = createGame({ embedder, validateWord, generatePuzzle });
     await game.newGame();

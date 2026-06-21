@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { buildApp } from './app';
 import { createService } from './embeddings';
 import { VectorTable } from './vectorTable';
@@ -21,7 +21,11 @@ const minilm = VectorTable.fromFiles(
   join(DATA, 'minilm-index.json'),
 );
 
-const service = createService({ numberbatch, minilm, minilmLive: createMinilmLive() });
+const dictionary = new Set<string>(
+  JSON.parse(readFileSync(join(ROOT, 'src/lib/words/dictionary.json'), 'utf8')) as string[],
+);
+
+const service = createService({ numberbatch, minilm, minilmLive: createMinilmLive(), dictionary });
 const app = await buildApp({ service, staticDir: serveStatic ? DIST : undefined });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });

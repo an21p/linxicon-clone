@@ -77,7 +77,12 @@
     return `M${s.x},${s.y} Q${mx - dy * off},${my + dx * off} ${t.x},${t.y}`;
   }
 
-  $: nodes, edges, rebuild();
+  // Re-settle whenever the node set or any edge similarity changes — i.e. a word
+  // was added, or the graph was re-scored under a different model. Deriving string
+  // keys guarantees the reactive fires on real content changes, not just identity.
+  $: nodeKey = nodes.map((n) => n.id).join('|');
+  $: edgeKey = edges.map((e) => `${e.a}~${e.b}:${e.sim.toFixed(3)}`).join('|');
+  $: nodeKey, edgeKey, rebuild();
   onDestroy(() => sim?.stop());
 </script>
 

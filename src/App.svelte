@@ -125,10 +125,12 @@
       best={$stats.best} {error} disabled={busy} {model}
       on:submit={onSubmit} on:newgame={onNewGame} on:model={onModelChange} />
     <div class="canvas">
-      <Graph
-        nodes={$state.nodes} edges={$state.edges}
-        targetA={$state.targetA} targetB={$state.targetB}
-        lastWord={$state.lastWord} />
+      {#key model}
+        <Graph
+          nodes={$state.nodes} edges={$state.edges}
+          targetA={$state.targetA} targetB={$state.targetB}
+          lastWord={$state.lastWord} />
+      {/key}
     </div>
     {#if $state.solved}
       <WinModal wordCount={$state.wordCount} best={$stats.best} on:again={onNewGame} />

@@ -81,8 +81,11 @@
     sim.alpha(Math.max(sim.alpha(), 0.25)).restart();
   }
 
-  function pos(end: string | { id: string }) {
-    return positions[typeof end === 'string' ? end : end.id];
+  // Resolve a link end (a word id, or the node object d3's forceLink mutates it
+  // into) to its id. Pure — the markup indexes `positions` directly so Svelte
+  // tracks the dependency and re-draws edges every tick, in lockstep with nodes.
+  function endId(end: string | { id: string }): string {
+    return typeof end === 'string' ? end : end.id;
   }
   // a gentle arc gives constellation lines a hand-drawn, charted feel
   function arc(s: { x: number; y: number }, t: { x: number; y: number }) {
@@ -171,9 +174,9 @@
 
   <!-- constellation lines -->
   {#each simLinks as l (l.key)}
-    {#if pos(l.source) && pos(l.target)}
-      {@const s = pos(l.source)}
-      {@const t = pos(l.target)}
+    {@const s = positions[endId(l.source)]}
+    {@const t = positions[endId(l.target)]}
+    {#if s && t}
       <path d={arc(s, t)} class="link-glow"
         stroke-width={2 + l.sim * 7} stroke-opacity={0.12 + l.sim * 0.22} />
       <path d={arc(s, t)} class="link"

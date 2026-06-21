@@ -76,8 +76,9 @@ npm run build      # static build to dist/
   `/api/hint` (best bridging dictionary word between two anchors).
 - `src/lib/embeddings.ts` — client to that API, with an in-memory + IndexedDB vector
   cache (`src/lib/embedder.ts`).
-- `src/lib/models.ts` — per-model similarity thresholds (Numberbatch runs colder than
-  MiniLM); the UI can override these at runtime.
+- `src/lib/models.ts` — per-model connect thresholds (both default to 0.41); the UI's
+  `link %` slider overrides them at runtime. Note MiniLM links readily at 0.41, while
+  ConceptNet Numberbatch runs colder and rarely clears it — pick the lens accordingly.
 - `src/lib/game.ts` — Svelte store wiring everything together; persists stats and
   per-puzzle words to `localStorage` (`src/lib/stats.ts`, `src/lib/savedGames.ts`).
 - `src/components/` — `Graph.svelte` (constellation), `VennBoard.svelte` (Euler cloud),

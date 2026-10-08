@@ -1,0 +1,102 @@
+{
+  "name": "q-storyline",
+  "displayName": "q Storyline",
+  "description": "Read kdb+/q scripts as a story: blocks rearranged semantically (setup, config, data, main flow with its helpers, handlers, API) in a linked reading view.",
+  "version": "0.1.0",
+  "publisher": "q-storyline",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages"
+  ],
+  "keywords": ["kdb", "q", "kdb+", "code reading", "outline"],
+  "main": "./src/extension.js",
+  "bin": {
+    "q-storyline": "./bin/q-storyline.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "example": "node bin/q-storyline.js examples/rdb.q",
+    "package": "npx @vscode/vsce package"
+  },
+  "activationEvents": [
+    "onLanguage:q",
+    "workspaceContains:**/*.q"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "q-storyline",
+        "aliases": ["q Storyline"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "q-storyline",
+        "scopeName": "source.q.storyline",
+        "path": "./syntaxes/q-storyline.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "qStoryline.open", "title": "Open Storyline", "category": "q Storyline", "icon": "$(book)" },
+      { "command": "qStoryline.openBottomUp", "title": "Open Storyline (Bottom-up)", "category": "q Storyline" },
+      { "command": "qStoryline.toggleMode", "title": "Switch Top-down / Bottom-up", "category": "q Storyline", "icon": "$(arrow-swap)" },
+      { "command": "qStoryline.goToSource", "title": "Go to Source", "category": "q Storyline", "icon": "$(go-to-file)" },
+      { "command": "qStoryline.revealInStory", "title": "Reveal in Storyline", "category": "q Storyline" },
+      { "command": "qStoryline.refreshOutline", "title": "Refresh", "category": "q Storyline", "icon": "$(refresh)" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "qStoryline.open", "when": "resourceExtname == .q", "group": "navigation" },
+        { "command": "qStoryline.toggleMode", "when": "resourceScheme == q-storyline", "group": "navigation" },
+        { "command": "qStoryline.goToSource", "when": "resourceScheme == q-storyline", "group": "navigation" }
+      ],
+      "editor/context": [
+        { "command": "qStoryline.revealInStory", "when": "resourceExtname == .q && resourceScheme != q-storyline", "group": "navigation@90" },
+        { "command": "qStoryline.goToSource", "when": "resourceScheme == q-storyline", "group": "navigation@90" }
+      ],
+      "view/title": [
+        { "command": "qStoryline.refreshOutline", "when": "view == qStoryline.outline", "group": "navigation" }
+      ],
+      "commandPalette": [
+        { "command": "qStoryline.toggleMode", "when": "resourceScheme == q-storyline" },
+        { "command": "qStoryline.goToSource", "when": "resourceScheme == q-storyline" },
+        { "command": "qStoryline.refreshOutline", "when": "false" }
+      ]
+    },
+    "keybindings": [
+      { "command": "qStoryline.open", "key": "ctrl+alt+s", "mac": "cmd+alt+s", "when": "editorTextFocus && resourceExtname == .q && resourceScheme != q-storyline" },
+      { "command": "qStoryline.revealInStory", "key": "ctrl+alt+r", "mac": "cmd+alt+r", "when": "editorTextFocus && resourceExtname == .q && resourceScheme != q-storyline" },
+      { "command": "qStoryline.goToSource", "key": "ctrl+alt+r", "mac": "cmd+alt+r", "when": "editorTextFocus && resourceScheme == q-storyline" }
+    ],
+    "views": {
+      "explorer": [
+        { "id": "qStoryline.outline", "name": "q Storyline" }
+      ]
+    },
+    "configuration": {
+      "title": "q Storyline",
+      "properties": {
+        "qStoryline.defaultMode": {
+          "type": "string",
+          "enum": ["top-down", "bottom-up"],
+          "default": "top-down",
+          "enumDescriptions": [
+            "Context first, then what the script does, each step followed by the helpers it uses.",
+            "Context first, then functions leaves-first, ending with the main flow."
+          ],
+          "description": "Order used by 'Open Storyline' and the outline view."
+        },
+        "qStoryline.annotate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a header line above each block with its role, source lines, and what it uses / is used by."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  kdbx:
+    # Checks the analysis against q itself. Needs a KDB-X license (free Community
+    # Edition from kx.com) stored base64-encoded in the KDB_LICENSE_B64 secret;
+    # without it the test reports itself as skipped.
+    runs-on: ubuntu-latest
+    env:
+      KDB_LICENSE_B64: ${{ secrets.KDB_LICENSE_B64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pykx
+      - run: npm ci
+      - run: npm run corpus
+      - run: npm run test:kdbx

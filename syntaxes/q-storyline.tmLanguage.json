@@ -1,0 +1,62 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "q Storyline",
+  "scopeName": "source.q.storyline",
+  "patterns": [
+    { "include": "#rule" },
+    { "include": "#section" },
+    { "include": "#annotation" },
+    { "include": "#comment" },
+    { "include": "#system" },
+    { "include": "#string" },
+    { "include": "#symbol" },
+    { "include": "#definition" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#zname" }
+  ],
+  "repository": {
+    "rule": { "match": "^/ ═+$", "name": "comment.line.rule.q-storyline punctuation.definition.comment" },
+    "section": {
+      "match": "^(/ )(\\d+ · [A-Z ]+)( — .*)$",
+      "captures": {
+        "2": { "name": "markup.heading.q-storyline entity.name.section" },
+        "3": { "name": "comment.line.q-storyline" }
+      }
+    },
+    "annotation": {
+      "match": "^(/ )(\\s*[▸↳] )([^·]+)(·.*)$",
+      "captures": {
+        "1": { "name": "comment.line.q-storyline" },
+        "2": { "name": "keyword.operator.q-storyline" },
+        "3": { "name": "entity.name.function.q-storyline markup.bold" },
+        "4": { "name": "comment.line.annotation.q-storyline markup.italic" }
+      }
+    },
+    "comment": {
+      "patterns": [
+        { "match": "^/.*$", "name": "comment.line.q" },
+        { "match": "(?<=\\s)/.*$", "name": "comment.line.q" }
+      ]
+    },
+    "system": { "match": "^\\\\.*$", "name": "keyword.control.directive.q" },
+    "string": {
+      "begin": "\"", "end": "\"", "name": "string.quoted.double.q",
+      "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.q" }]
+    },
+    "symbol": { "match": "`[A-Za-z0-9_.:/]*", "name": "constant.other.symbol.q" },
+    "definition": {
+      "match": "^(\\.?[A-Za-z][A-Za-z0-9_.]*)(::?)",
+      "captures": {
+        "1": { "name": "entity.name.function.q" },
+        "2": { "name": "keyword.operator.assignment.q" }
+      }
+    },
+    "number": { "match": "(?<![A-Za-z_.])-?\\d[0-9a-zA-Z.:]*", "name": "constant.numeric.q" },
+    "keyword": {
+      "match": "\\b(select|exec|update|delete|from|where|by|if|do|while|each|peach|over|scan|prior|insert|upsert|xkey|lj|ij|uj|aj|wj|til|count|first|last|sum|avg|min|max|string|value|get|set|hopen|hclose|enlist|flip|key|cols|tables|exit)\\b",
+      "name": "keyword.control.q"
+    },
+    "zname": { "match": "\\.[zQhjoq]\\.[A-Za-z]+", "name": "support.function.q" }
+  }
+}

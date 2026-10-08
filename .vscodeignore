@@ -1,0 +1,13 @@
+test/**
+examples/**
+scripts/**
+src/**
+vendor/**/*.ts
+.corpus/**
+.vscode/**
+esbuild.mjs
+tsconfig.json
+**/*.map
+.gitignore
+node_modules/**
+.github/**

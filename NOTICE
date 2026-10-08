@@ -1,0 +1,7 @@
+q Storyline
+
+This product includes the q language parser from the kdb VS Code extension
+(https://github.com/KxSystems/kx-vscode), Copyright (c) 1998-2026 KX Systems Inc.,
+licensed under the Apache License, Version 2.0. The files in vendor/kx-parser are
+copied unmodified from server/src/parser at the commit recorded in
+vendor/kx-parser/COMMIT.

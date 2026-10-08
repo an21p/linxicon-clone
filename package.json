@@ -1,0 +1,216 @@
+{
+  "name": "q-storyline",
+  "displayName": "q Storyline",
+  "description": "Read kdb+/q scripts as a story: blocks rearranged semantically (setup, config, data, main flow with its helpers, handlers, API) in a linked reading view. Uses the KX language server's q parser.",
+  "version": "0.2.0",
+  "publisher": "q-storyline",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/an21p/linxicon-clone.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "kdb",
+    "q",
+    "kdb+",
+    "code reading",
+    "outline"
+  ],
+  "main": "./out/extension.js",
+  "bin": {
+    "q-storyline": "./out/cli.js"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs --sourcemap",
+    "vscode:prepublish": "node esbuild.mjs --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.js",
+    "test:kdbx": "npm run build && node --test test/kdbx.test.js",
+    "corpus": "bash scripts/fetch-corpus.sh",
+    "example": "npm run build && node out/cli.js examples/rdb.q",
+    "vendor": "bash scripts/vendor-kx-parser.sh",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/an21p/linxicon-clone/blob/claude/q-storyline --baseImagesUrl https://raw.githubusercontent.com/an21p/linxicon-clone/claude/q-storyline"
+  },
+  "activationEvents": [
+    "onLanguage:q",
+    "workspaceContains:**/*.q"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "q-storyline",
+        "aliases": [
+          "q Storyline"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "q-storyline",
+        "scopeName": "source.q.storyline",
+        "path": "./syntaxes/q-storyline.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "qStoryline.open",
+        "title": "Open Storyline",
+        "category": "q Storyline",
+        "icon": "$(book)"
+      },
+      {
+        "command": "qStoryline.openBottomUp",
+        "title": "Open Storyline (Bottom-up)",
+        "category": "q Storyline"
+      },
+      {
+        "command": "qStoryline.toggleMode",
+        "title": "Switch Top-down / Bottom-up",
+        "category": "q Storyline",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "qStoryline.goToSource",
+        "title": "Go to Source",
+        "category": "q Storyline",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "qStoryline.revealInStory",
+        "title": "Reveal in Storyline",
+        "category": "q Storyline"
+      },
+      {
+        "command": "qStoryline.refreshOutline",
+        "title": "Refresh",
+        "category": "q Storyline",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "qStoryline.open",
+          "when": "resourceExtname == .q",
+          "group": "navigation"
+        },
+        {
+          "command": "qStoryline.toggleMode",
+          "when": "resourceScheme == q-storyline",
+          "group": "navigation"
+        },
+        {
+          "command": "qStoryline.goToSource",
+          "when": "resourceScheme == q-storyline",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "qStoryline.revealInStory",
+          "when": "resourceExtname == .q && resourceScheme != q-storyline",
+          "group": "navigation@90"
+        },
+        {
+          "command": "qStoryline.goToSource",
+          "when": "resourceScheme == q-storyline",
+          "group": "navigation@90"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "qStoryline.refreshOutline",
+          "when": "view == qStoryline.outline",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "qStoryline.toggleMode",
+          "when": "resourceScheme == q-storyline"
+        },
+        {
+          "command": "qStoryline.goToSource",
+          "when": "resourceScheme == q-storyline"
+        },
+        {
+          "command": "qStoryline.refreshOutline",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "qStoryline.open",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorTextFocus && resourceExtname == .q && resourceScheme != q-storyline"
+      },
+      {
+        "command": "qStoryline.revealInStory",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus && resourceExtname == .q && resourceScheme != q-storyline"
+      },
+      {
+        "command": "qStoryline.goToSource",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus && resourceScheme == q-storyline"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "qStoryline.outline",
+          "name": "q Storyline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "q Storyline",
+      "properties": {
+        "qStoryline.defaultMode": {
+          "type": "string",
+          "enum": [
+            "top-down",
+            "bottom-up"
+          ],
+          "default": "top-down",
+          "enumDescriptions": [
+            "Context first, then what the script does, each step followed by the helpers it uses.",
+            "Context first, then functions leaves-first, ending with the main flow."
+          ],
+          "description": "Order used by 'Open Storyline' and the outline view."
+        },
+        "qStoryline.annotate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a header line above each block with its role, source lines, and what it uses / is used by."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "chevrotain": "11.1.2",
+    "vscode-languageserver-types": "3.17.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.80.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "lodash-es": "4.18.1"
+  }
+}
